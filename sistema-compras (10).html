@@ -758,6 +758,15 @@ function salvarPedido(){
       if(!confirm(`Pedido "${p.pedido}" já existe no sistema!\nDeseja adicionar estes itens a ele assim mesmo?`)) return;
     }
   }
+  // Sync DOM input values to _itens before saving (prevents stale state)
+  _itens.forEach((it,i)=>{
+    const domCom=document.getElementById(`it-com-${i}`);
+    const domQty=document.getElementById(`it-qty-${i}`);
+    const domUsd=document.getElementById(`it-usd-${i}`);
+    if(domCom&&domCom.value!=='') it.comissao_pct=domCom.value;
+    if(domQty&&domQty.value!=='') it.quantidade=domQty.value;
+    if(domUsd&&domUsd.value!=='') it.preco_usd=domUsd.value;
+  });
   const agora=Date.now();
   const novos=_itens.map((it,i)=>{
     const c=calcItem(it,p.cotacao,p.nota_status);
@@ -768,7 +777,8 @@ function salvarPedido(){
       arredondamento:parseFloat(it.arredondamento)||0,comissao_pct:c.com,
       custo_unit:+c.custo_unit.toFixed(2),custo_total:+c.custo_total.toFixed(2),
       valor_pagar_freteiro:+c.apagar.toFixed(2),
-      usuario:STATE.user.username,origem:'Manual'
+      usuario:STATE.user.username,origem:'Manual',
+      status_lancado:false,status_pago:false
     };
   });
   // Auto-register any commissions not yet in the DB
@@ -1014,6 +1024,7 @@ function buildPedidosTable(pagPedidos,total,totalPags){
     <thead><tr>
       <th style="width:28px"></th>
       <th>Pedido</th><th>Data</th><th>Freteiro</th><th>Nota</th>
+      <th style="text-align:center">Lançado</th><th style="text-align:center">Pago</th>
       <th>Itens</th><th>Custo Total</th><th>A pagar freteiro</th><th>Ações</th>
     </tr></thead>
     <tbody>
@@ -1026,6 +1037,8 @@ function buildPedidosTable(pagPedidos,total,totalPags){
         <td style="font-size:13px;color:#6b7280">${g.data||'—'}</td>
         <td style="font-size:13px">${escHtml(g.freteiro)}</td>
         <td><span class="badge ${g.nota==='nota_paga'?'b-paga':'b-pagar'}">${g.nota==='nota_paga'?'Nota Paga':'A Pagar'}</span></td>
+        <td style="text-align:center">${buildStatusCheck(g.itens,'lancado',g.pedido)}</td>
+        <td style="text-align:center">${buildStatusCheck(g.itens,'pago',g.pedido)}</td>
         <td style="font-size:13px;color:#6b7280">${g.itens.length}</td>
         <td style="font-weight:700;color:#1d4ed8">${fmt(g.tCusto)}</td>
         <td style="font-weight:700;color:${g.nota==='nota_paga'?'#15803d':'#c2410c'}">${fmt(g.tFrete)}</td>
@@ -1041,6 +1054,8 @@ function buildPedidosTable(pagPedidos,total,totalPags){
         <td style="font-size:12px;color:#6b7280">${c.data||'—'}</td>
         <td style="font-size:12px">${escHtml(c.freteiro||'—')}</td>
         <td></td>
+        <td style="text-align:center">${buildItemCheck(c,'lancado')}</td>
+        <td style="text-align:center">${buildItemCheck(c,'pago')}</td>
         <td style="font-weight:600;font-size:13px">${escHtml(c.produto)}</td>
         <td style="font-size:12px;color:#374151">
           Qtde: ${c.quantidade} · U$${fmtN(c.preco_usd,2)} · Cot:${fmtN(c.cotacao,2)} · <span style='color:${(c.comissao_pct||0)==0?"#dc2626":"#374151"}'>Com:${fmtN(c.comissao_pct,1)}%${(c.comissao_pct||0)==0?' ⚠':''}}</span>
@@ -1059,6 +1074,46 @@ function buildPedidosTable(pagPedidos,total,totalPags){
 
 function togglePedido(ped){
   _hist.expanded[ped]=!_hist.expanded[ped];
+  renderPedidosTable();
+}
+
+// Build group-level status checkbox (checked if ALL items have that status)
+function buildStatusCheck(itens,tipo,ped){
+  const field='status_'+tipo;
+  const allChecked=itens.length>0&&itens.every(c=>c[field]);
+  const someChecked=itens.some(c=>c[field]);
+  const label=tipo==='lancado'?'Lançado':'Pago';
+  const color=tipo==='lancado'?'#3b82f6':'#16a34a';
+  return `<label title="${label}" style="display:inline-flex;align-items:center;gap:5px;cursor:pointer;font-size:12px;color:${allChecked?color:'#9ca3af'}">
+    <input type="checkbox" ${allChecked?'checked':''} ${someChecked&&!allChecked?'style="opacity:.5"':''} 
+      onchange="togglePedidoStatus('${ped.replace(/'/g,"\'")}','${field}',this.checked)"
+      style="width:16px;height:16px;accent-color:${color};cursor:pointer">
+    ${label}
+  </label>`;
+}
+
+// Build single-item status checkbox
+function buildItemCheck(c,tipo){
+  const field='status_'+tipo;
+  const checked=!!c[field];
+  const label=tipo==='lancado'?'Lançado':'Pago';
+  const color=tipo==='lancado'?'#3b82f6':'#16a34a';
+  return `<input type="checkbox" title="${label}" ${checked?'checked':''}
+    onchange="toggleItemStatus(${c.id},'${field}',this.checked)"
+    style="width:16px;height:16px;accent-color:${color};cursor:pointer">`;
+}
+
+// Toggle status for all items in a pedido
+function togglePedidoStatus(ped,field,val){
+  const updated=STATE.compras.map(c=>(c.pedido||'(sem pedido)')===ped?{...c,[field]:val}:c);
+  save('compras',updated);
+  renderPedidosTable();
+}
+
+// Toggle status for a single item
+function toggleItemStatus(id,field,val){
+  const updated=STATE.compras.map(c=>c.id===id?{...c,[field]:val}:c);
+  save('compras',updated);
   renderPedidosTable();
 }
 
