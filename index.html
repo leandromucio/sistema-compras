@@ -128,15 +128,19 @@ firebase.initializeApp(firebaseConfig);
 const db=firebase.firestore();
 const COL='sistema'; // collection name
 
-// Write array to Firestore doc
+// Write array to Firestore doc with retry
 async function ss(key,val){
-  try{
-    await db.collection(COL).doc(key).set({data:val});
-  }catch(e){
-    // fallback to localStorage if offline
-    try{localStorage.setItem('sc2_'+key,JSON.stringify(val));}catch{}
-    console.warn('Firestore write error:',e.message);
+  for(let attempt=0;attempt<3;attempt++){
+    try{
+      await db.collection(COL).doc(key).set({data:val,ts:Date.now()});
+      return; // success
+    }catch(e){
+      console.warn(`Firestore write attempt ${attempt+1} failed:`,e.message);
+      if(attempt<2) await new Promise(r=>setTimeout(r,500*(attempt+1)));
+    }
   }
+  // All attempts failed — data is safe in localStorage
+  console.warn('Firestore write failed after 3 attempts, data in localStorage');
 }
 
 // Keep localStorage as offline cache too
@@ -303,7 +307,7 @@ function buildLogin(){
     <div id="li-err" style="color:#dc2626;font-size:13px;margin-top:8px;display:none"></div>
     <button class="btn btn-blue" style="width:100%;margin-top:20px;padding:10px" onclick="doLogin()">Entrar</button>
     <div style="text-align:center;font-size:12px;color:#9ca3af;margin-top:12px">admin / admin123 &nbsp;·&nbsp; usuario / 123456</div>
-      <div style="text-align:center;font-size:11px;color:#d1d5db;margin-top:8px;letter-spacing:.5px">v2025.03.30-r17</div>
+      <div style="text-align:center;font-size:11px;color:#d1d5db;margin-top:8px;letter-spacing:.5px">v2025.03.30-r18</div>
   </div></div>`;
 }
 
@@ -1724,13 +1728,23 @@ function copiarSKU(el,sku){
     const snaps=await Promise.all(promises);
     snaps.forEach((snap,i)=>{
       const k=keys[i];
+      const local=getLocal(k);
       if(snap.exists){
-        // Always use Firestore data — never stale local cache
-        STATE[k]=snap.data().data;
-        saveLocal(k,STATE[k]);
+        const fbData=snap.data().data;
+        const fbTs=snap.data().ts||0;
+        // Use localStorage if it has MORE records (means Firestore hasn't synced yet)
+        // or if local is newer than Firestore timestamp
+        if(local&&Array.isArray(local)&&Array.isArray(fbData)&&local.length>fbData.length){
+          console.log(`Using local cache for ${k}: local=${local.length} fb=${fbData.length}`);
+          STATE[k]=local;
+          // Push local data to Firestore to sync
+          ss(k,local);
+        } else {
+          STATE[k]=fbData;
+          saveLocal(k,fbData);
+        }
       } else {
-        // First time: seed from defaults (skip huge DEF_COMPRAS on first run)
-        STATE[k]=defaults[k];
+        STATE[k]=local||defaults[k];
         if(k!=='compras') ss(k,STATE[k]);
       }
     });
