@@ -303,7 +303,7 @@ function buildLogin(){
     <div id="li-err" style="color:#dc2626;font-size:13px;margin-top:8px;display:none"></div>
     <button class="btn btn-blue" style="width:100%;margin-top:20px;padding:10px" onclick="doLogin()">Entrar</button>
     <div style="text-align:center;font-size:12px;color:#9ca3af;margin-top:12px">admin / admin123 &nbsp;·&nbsp; usuario / 123456</div>
-      <div style="text-align:center;font-size:11px;color:#d1d5db;margin-top:8px;letter-spacing:.5px">v2025.03.30-r16</div>
+      <div style="text-align:center;font-size:11px;color:#d1d5db;margin-top:8px;letter-spacing:.5px">v2025.03.30-r17</div>
   </div></div>`;
 }
 
@@ -1157,12 +1157,11 @@ function buildStatusCheck(itens,tipo,ped){
   const field='status_'+tipo;
   const allChecked=itens.length>0&&itens.every(c=>c[field]);
   const someChecked=itens.some(c=>c[field]);
-  const label=tipo==='lancado'?'Lançado':'Pago';
-  const color=tipo==='lancado'?'#3b82f6':'#16a34a';
-  return `<label title="${label}" style="display:inline-flex;align-items:center;gap:5px;cursor:pointer;font-size:12px;color:${allChecked?color:'#9ca3af'}">
-    <input type="checkbox" ${allChecked?'checked':''} ${someChecked&&!allChecked?'style="opacity:.5"':''} 
-      onchange="togglePedidoStatus('${ped.replace(/'/g,"\'")}','${field}',this.checked)"
-      style="width:16px;height:16px;accent-color:${color};cursor:pointer">
+  const label='Lançado';
+  return `<label class="lancado-label ${allChecked?'checked':''}" title="${label}">
+    <input type="checkbox" ${allChecked?'checked':''} ${someChecked&&!allChecked?'style="opacity:.6"':''}
+      onchange="togglePedidoStatus('${ped.replace(/'/g,"\'")}','${field}',this.checked);this.closest('label').classList.toggle('checked',this.checked)"
+      style="width:15px;height:15px;accent-color:#16a34a;cursor:pointer">
     ${label}
   </label>`;
 }
@@ -1171,11 +1170,13 @@ function buildStatusCheck(itens,tipo,ped){
 function buildItemCheck(c,tipo){
   const field='status_'+tipo;
   const checked=!!c[field];
-  const label=tipo==='lancado'?'Lançado':'Pago';
-  const color=tipo==='lancado'?'#3b82f6':'#16a34a';
-  return `<input type="checkbox" title="${label}" ${checked?'checked':''}
-    onchange="toggleItemStatus(${c.id},'${field}',this.checked)"
-    style="width:16px;height:16px;accent-color:${color};cursor:pointer">`;
+  const label='Lançado';
+  return `<label class="lancado-label ${checked?'checked':''}" title="${label}">
+    <input type="checkbox" ${checked?'checked':''}
+      onchange="toggleItemStatus(${c.id},'${field}',this.checked);this.closest('label').classList.toggle('checked',this.checked)"
+      style="width:15px;height:15px;accent-color:#16a34a;cursor:pointer">
+    ${label}
+  </label>`;
 }
 
 // Toggle status for all items in a pedido
@@ -1637,6 +1638,9 @@ function printPedido(ped){
     .tot-box.orange .val{color:#c2410c}
     .tot-box.green .val{color:#15803d}
     .sku-copy{cursor:pointer;position:relative;border-radius:4px;padding:2px 6px;transition:background .15s}
+.lancado-label{display:inline-flex;align-items:center;gap:5px;cursor:pointer;font-size:12px;padding:3px 8px;border-radius:20px;transition:all .2s;color:#9ca3af;background:transparent}
+.lancado-label.checked{color:#16a34a;background:#dcfce7;font-weight:600}
+.lancado-label input{width:15px;height:15px;cursor:pointer;accent-color:#16a34a}
 .sku-copy:hover{background:#dbeafe;color:#1d4ed8}
 .sku-copy:hover::after{content:'📋 copiar';position:absolute;top:-26px;left:50%;transform:translateX(-50%);background:#1e293b;color:#fff;font-size:11px;padding:3px 8px;border-radius:4px;white-space:nowrap;pointer-events:none;font-weight:400}
 .sku-copied::after{content:'✓ copiado!' !important;background:#16a34a !important}
