@@ -207,11 +207,9 @@ function startListeners(){
     const unsub=db.collection(COL).doc(key).onSnapshot(snap=>{
       if(snap.exists){
         const val=snap.data().data;
-        if(JSON.stringify(STATE[key])!==JSON.stringify(val)){
-          STATE[key]=val;
-          saveLocal(key,val);
-          if(STATE._ready) renderPartial(key);
-        }
+        STATE[key]=val;
+        saveLocal(key,val);
+        if(STATE._ready) renderPartial(key);
       }
     },err=>console.warn('Listener error:',err));
     _unsubs.push(unsub);
@@ -221,10 +219,16 @@ function startListeners(){
 // Partial re-render — only re-renders parts affected by key change
 function renderPartial(key){
   const v=STATE.view;
-  if(key==='compras'&&v==='historico') renderPedidosTable();
-  else if(key==='comissoes'&&v==='bd') renderBDTable();
-  else if(key==='freteiros') render();
-  else render();
+  // Always update — no conditional skipping
+  if(key==='compras'){
+    if(v==='historico') renderPedidosTable();
+    else render();
+  } else if(key==='comissoes'){
+    if(v==='bd') renderBDTable();
+    // also re-render nova compra so SKU list updates
+  } else {
+    render();
+  }
 }
 
 // Default commission per freteiro (case-insensitive match)
@@ -293,7 +297,7 @@ function buildLogin(){
     <div id="li-err" style="color:#dc2626;font-size:13px;margin-top:8px;display:none"></div>
     <button class="btn btn-blue" style="width:100%;margin-top:20px;padding:10px" onclick="doLogin()">Entrar</button>
     <div style="text-align:center;font-size:12px;color:#9ca3af;margin-top:12px">admin / admin123 &nbsp;·&nbsp; usuario / 123456</div>
-      <div style="text-align:center;font-size:11px;color:#d1d5db;margin-top:8px;letter-spacing:.5px">v2025.03.30-r14</div>
+      <div style="text-align:center;font-size:11px;color:#d1d5db;margin-top:8px;letter-spacing:.5px">v2025.03.30-r15</div>
   </div></div>`;
 }
 
@@ -1711,13 +1715,13 @@ function copiarSKU(el,sku){
     snaps.forEach((snap,i)=>{
       const k=keys[i];
       if(snap.exists){
+        // Always use Firestore data — never stale local cache
         STATE[k]=snap.data().data;
-        saveLocal(k,STATE[k]); // update local cache
+        saveLocal(k,STATE[k]);
       } else {
-        // Doc doesn't exist yet — check local cache, else use default
-        const local=getLocal(k);
-        STATE[k]=local||defaults[k];
-        if(local||k!=='compras') ss(k,STATE[k]); // seed Firestore (skip huge DEF_COMPRAS)
+        // First time: seed from defaults (skip huge DEF_COMPRAS on first run)
+        STATE[k]=defaults[k];
+        if(k!=='compras') ss(k,STATE[k]);
       }
     });
     STATE._ready=true;
