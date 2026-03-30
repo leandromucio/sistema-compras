@@ -227,11 +227,34 @@ function renderPartial(key){
   else render();
 }
 
+// Default commission per freteiro (case-insensitive match)
+const COM_FRETEIRO={
+  'pecinha':18,'marquinho':20,'lu freteira':16,'renato':15,
+  'vanessa':15,'rosane':12,'marquinho angel':20
+};
+
+function comissaoPorFreteiro(freteiro){
+  if(!freteiro) return null;
+  const fl=freteiro.toLowerCase().trim();
+  // exact match first
+  if(COM_FRETEIRO[fl]!==undefined) return COM_FRETEIRO[fl];
+  // partial match
+  for(const k of Object.keys(COM_FRETEIRO)){
+    if(fl.includes(k)||k.includes(fl)) return COM_FRETEIRO[k];
+  }
+  return null;
+}
+
 function buscarComissao(produto,freteiro){
   if(!produto||!freteiro) return null;
   const pu=produto.toUpperCase().trim(),fl=freteiro.toLowerCase().trim();
+  // 1) BD: SKU + freteiro specific
   const bd=STATE.comissoes.find(c=>c.produto.toUpperCase().trim()===pu&&c.freteiro.toLowerCase().trim()===fl);
   if(bd) return{pct:bd.comissao,src:'bd'};
+  // 2) Default by freteiro name
+  const def=comissaoPorFreteiro(freteiro);
+  if(def!==null) return{pct:def,src:'freteiro'};
+  // 3) Historico fallback
   const hist=[...STATE.compras].filter(c=>(c.produto||'').toUpperCase().trim()===pu&&(c.freteiro||'').toLowerCase().trim()===fl&&(c.comissao_pct||0)>0);
   if(hist.length) return{pct:hist[hist.length-1].comissao_pct,src:'hist'};
   return null;
@@ -270,6 +293,7 @@ function buildLogin(){
     <div id="li-err" style="color:#dc2626;font-size:13px;margin-top:8px;display:none"></div>
     <button class="btn btn-blue" style="width:100%;margin-top:20px;padding:10px" onclick="doLogin()">Entrar</button>
     <div style="text-align:center;font-size:12px;color:#9ca3af;margin-top:12px">admin / admin123 &nbsp;·&nbsp; usuario / 123456</div>
+      <div style="text-align:center;font-size:11px;color:#d1d5db;margin-top:8px;letter-spacing:.5px">v2025.03.30-r14</div>
   </div></div>`;
 }
 
@@ -453,7 +477,7 @@ function buildNovaCompra(){
       </div>
       <div>
         <label class="L">Freteiro</label>
-        <select onchange="_ped.freteiro=this.value;atualizarComissoesItens()">
+        <select onchange="_ped.freteiro=this.value;atualizarComissoesItens();atualizarComissaoHeader()">
           <option value="">Selecione...</option>
           ${STATE.freteiros.map(x=>`<option value="${escHtml(x)}"${p.freteiro===x?' selected':''}>${escHtml(x)}</option>`).join('')}
         </select>
@@ -532,8 +556,8 @@ function buildItemRow(it,i,cot,nota){
           onblur="setTimeout(()=>iSkuBlur(${i}),160)">
         <div id="it-drop-${i}"></div>
       </div>
-      ${src?`<div style="font-size:11px;color:#16a34a;margin-top:2px">✓ ${src==='bd'?'Banco de dados':'Histórico'}</div>`:''}
-      ${!src&&it.produto&&_ped.freteiro?`<div style="font-size:11px;margin-top:2px"><a href="#" style="color:#b45309" onclick="openAddComissao(event,'${escHtml(it.produto)}','${escHtml(_ped.freteiro)}');return false">+ cadastrar comissão</a></div>`:''}
+      ${src?`<div style="font-size:11px;color:#16a34a;margin-top:2px">✓ ${src==='bd'?'Banco de dados':src==='freteiro'?'Padrão do freteiro':'Histórico'}</div>`:''}
+      ${!src&&it.produto&&_ped.freteiro?`<div style="font-size:11px;margin-top:2px"><span style="color:#dc2626;font-weight:500">⚠ sem comissão</span> — <a href="#" style="color:#b45309" onclick="openAddComissao(event,'${escHtml(it.produto)}','${escHtml(_ped.freteiro)}');return false">cadastrar</a></div>`:''}
     </td>
     <td style="padding:4px 4px"><input type="number" id="it-qty-${i}" value="${it.quantidade}" placeholder="0" min="1" tabindex="${i*3+2}"
       style="width:100%;padding:7px 8px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;outline:none"
@@ -544,9 +568,10 @@ function buildItemRow(it,i,cot,nota){
       oninput="iNumInput(${i},'preco_usd',this.value)"
       onkeydown="iNumKey(event,${i},'usd')" onfocus="this.select()"></td>
     <td style="padding:4px 4px"><input type="number" id="it-com-${i}" value="${it.comissao_pct}" placeholder="%" step="0.1" tabindex="${i*3+4}"
-      style="width:100%;padding:7px 8px;border:1px solid ${src?'#86efac':'#d1d5db'};border-radius:6px;font-size:13px;background:${src?'#f0fdf4':'#fff'};outline:none"
-      oninput="iNumInput(${i},'comissao_pct',this.value);_itens[${i}]._autoSrc='';document.getElementById('it-com-${i}').style.background='#fff';document.getElementById('it-com-${i}').style.borderColor='#d1d5db'"
-      onkeydown="iNumKey(event,${i},'com')" onfocus="this.select()"></td>
+      style="width:100%;padding:7px 8px;border:1px solid ${src?'#86efac':(!it.comissao_pct&&it.produto)?'#fca5a5':'#d1d5db'};border-radius:6px;font-size:13px;background:${src?'#f0fdf4':(!it.comissao_pct&&it.produto)?'#fff1f1':'#fff'};outline:none"
+      oninput="iNumInput(${i},'comissao_pct',this.value);_itens[${i}]._autoSrc='';const el=document.getElementById('it-com-${i}');el.style.background=this.value?'#fff':'#fff1f1';el.style.borderColor=this.value?'#d1d5db':'#fca5a5';"
+      onkeydown="iNumKey(event,${i},'com')" onfocus="this.select()"
+      onblur="if(!this.value&&_itens[${i}].produto){this.style.borderColor='#fca5a5';this.style.background='#fff1f1';}"></td>
     <td id="it-cu-${i}" style="color:#1d4ed8;font-weight:500;font-size:13px;padding:4px 8px;white-space:nowrap">${c.qty>0&&c.usd>0?fmt(c.custo_unit):'—'}</td>
     <td id="it-ct-${i}" style="color:#1d4ed8;font-weight:700;font-size:13px;padding:4px 8px;white-space:nowrap">${c.qty>0&&c.usd>0?fmt(c.custo_total):'—'}</td>
     <td id="it-ap-${i}" style="font-weight:700;font-size:13px;padding:4px 8px;white-space:nowrap;color:${nota==='nota_paga'?'#15803d':'#c2410c'}">${c.qty>0&&c.usd>0?fmt(c.apagar):'—'}</td>
@@ -629,9 +654,16 @@ function iSkuInput(i,val){
     const inp=document.getElementById(`it-sku-${i}`);
     if(inp){inp.style.borderColor='#86efac';inp.style.background='#f0fdf4';}
   } else {
-    _itens[i].comissao_pct='';
+    // No BD match — try freteiro default
+    const defCom=comissaoPorFreteiro(_ped.freteiro);
+    _itens[i].comissao_pct=defCom!==null?String(defCom):'';
+    _itens[i]._autoSrc=defCom!==null?'freteiro':'';
     const cel=document.getElementById(`it-com-${i}`);
-    if(cel){cel.value='';cel.style.background='#fff';cel.style.borderColor='#d1d5db';}
+    if(cel){
+      cel.value=defCom!==null?defCom:'';
+      cel.style.background=defCom!==null?'#f0fdf4':'#fff';
+      cel.style.borderColor=defCom!==null?'#86efac':'#d1d5db';
+    }
     const inp=document.getElementById(`it-sku-${i}`);
     if(inp){inp.style.borderColor=val&&!STATE.skus.find(s=>s.toUpperCase()===val.toUpperCase())?'#fcd34d':'#d1d5db';inp.style.background='#fff';}
   }
@@ -698,13 +730,19 @@ function selectItemSku(i,val){
   _itens[i].produto=val;
   const res=buscarComissao(val,_ped.freteiro);
   if(res){_itens[i].comissao_pct=String(res.pct);_itens[i]._autoSrc=res.src;}
-  else{_itens[i].comissao_pct='';_itens[i]._autoSrc='';}
+  else{
+    const defCom=comissaoPorFreteiro(_ped.freteiro);
+    _itens[i].comissao_pct=defCom!==null?String(defCom):'';
+    _itens[i]._autoSrc=defCom!==null?'freteiro':'';
+  }
   // Update SKU input in-place
   const inp=document.getElementById(`it-sku-${i}`);
   if(inp){inp.value=val;inp.style.borderColor=res?'#86efac':'#d1d5db';inp.style.background=res?'#f0fdf4':'#fff';}
   // Update commission input in-place
   const com=document.getElementById(`it-com-${i}`);
-  if(com){com.value=res?res.pct:'';com.style.background=res?'#f0fdf4':'#fff';com.style.borderColor=res?'#86efac':'#d1d5db';}
+  const comVal=_itens[i].comissao_pct;
+  const comSrc=_itens[i]._autoSrc;
+  if(com){com.value=comVal||'';com.style.background=comSrc?'#f0fdf4':'#fff';com.style.borderColor=comSrc?'#86efac':'#d1d5db';}
   // Close drop
   hideFloatDrop();
   _acHl=-1;
@@ -750,6 +788,19 @@ function atualizarComissoesItens(){
   renderItensTable();
 }
 
+// When freteiro is selected and items have no commission yet, fill from default
+function atualizarComissaoHeader(){
+  const def=comissaoPorFreteiro(_ped.freteiro);
+  if(def===null) return;
+  _itens.forEach((it,i)=>{
+    if(!it.comissao_pct||parseFloat(it.comissao_pct)===0){
+      const res=buscarComissao(it.produto||'X',_ped.freteiro);
+      if(res){it.comissao_pct=String(res.pct);it._autoSrc=res.src;}
+    }
+  });
+  renderItensTable();
+}
+
 function salvarPedido(){
   const p=_ped;
   if(p.pedido){
@@ -758,7 +809,7 @@ function salvarPedido(){
       if(!confirm(`Pedido "${p.pedido}" já existe no sistema!\nDeseja adicionar estes itens a ele assim mesmo?`)) return;
     }
   }
-  // Sync DOM input values to _itens before saving (prevents stale state)
+  // Sync DOM input values to _itens before saving
   _itens.forEach((it,i)=>{
     const domCom=document.getElementById(`it-com-${i}`);
     const domQty=document.getElementById(`it-qty-${i}`);
@@ -766,6 +817,11 @@ function salvarPedido(){
     if(domCom&&domCom.value!=='') it.comissao_pct=domCom.value;
     if(domQty&&domQty.value!=='') it.quantidade=domQty.value;
     if(domUsd&&domUsd.value!=='') it.preco_usd=domUsd.value;
+    // If commission still empty/zero, resolve from freteiro default or BD
+    if(!(parseFloat(it.comissao_pct)>0)&&it.produto&&p.freteiro){
+      const res=buscarComissao(it.produto,p.freteiro);
+      if(res) it.comissao_pct=String(res.pct);
+    }
   });
   const agora=Date.now();
   const novos=_itens.map((it,i)=>{
@@ -781,17 +837,24 @@ function salvarPedido(){
       status_lancado:false,status_pago:false
     };
   });
-  // Auto-register any commissions not yet in the DB
-  const novasComissoes=[];
+  // Check for items with 0% commission and warn user
+  const semComissao=_itens.filter(it=>!(parseFloat(it.comissao_pct)>0)&&it.produto);
+  if(semComissao.length){
+    const skus=semComissao.map(it=>it.produto).join(', ');
+    if(!confirm(`Atenção! Os seguintes produtos estão com comissão 0% ou em branco:\n\n${skus}\n\nDeseja salvar assim mesmo?`)) return;
+  }
+
+  // UPSERT comissoes: add new or update existing SKU+freteiro combo
+  let comissoesAtualizadas=[...STATE.comissoes];
   _itens.forEach(it=>{
     if(!it.produto||!p.freteiro||!(parseFloat(it.comissao_pct)>0)) return;
     const pu=it.produto.toUpperCase().trim(),fl=p.freteiro.toLowerCase().trim();
-    const jaExiste=STATE.comissoes.some(c=>c.produto.toUpperCase().trim()===pu&&c.freteiro.toLowerCase().trim()===fl);
-    if(!jaExiste) novasComissoes.push({produto:it.produto.trim(),freteiro:p.freteiro,comissao:parseFloat(it.comissao_pct)});
+    const idx=comissoesAtualizadas.findIndex(c=>c.produto.toUpperCase().trim()===pu&&c.freteiro.toLowerCase().trim()===fl);
+    const novaComissao={produto:it.produto.trim(),freteiro:p.freteiro,comissao:parseFloat(it.comissao_pct)};
+    if(idx>=0) comissoesAtualizadas[idx]=novaComissao; // UPDATE existing
+    else comissoesAtualizadas.push(novaComissao);       // INSERT new
   });
-  if(novasComissoes.length){
-    save('comissoes',[...STATE.comissoes,...novasComissoes]);
-  }
+  save('comissoes',comissoesAtualizadas);
   save('compras',[...STATE.compras,...novos]);
   limparPedido();
   const fl=document.getElementById('ped-flash');
@@ -951,12 +1014,13 @@ function buildHistorico(){
   const grupos={};
   lista.forEach(c=>{
     const key=c.pedido||'(sem pedido)';
-    if(!grupos[key]) grupos[key]={pedido:key,itens:[],tCusto:0,tFrete:0,tUS:0,data:c.data||'',freteiro:c.freteiro||'',nota:c.nota_status};
+    if(!grupos[key]) grupos[key]={pedido:key,itens:[],tCusto:0,tFrete:0,tUS:0,tSemFrete:0,data:c.data||'',freteiro:c.freteiro||'',nota:c.nota_status};
     else if((c.data||'')>(grupos[key].data||'')) grupos[key].data=c.data||''; // keep most recent date
     grupos[key].itens.push(c);
     grupos[key].tCusto+=c.custo_total||0;
     grupos[key].tFrete+=c.valor_pagar_freteiro||0;
     grupos[key].tUS+=(c.preco_usd||0)*(c.quantidade||0);
+    grupos[key].tSemFrete+=((c.preco_usd||0)*(c.cotacao||0)*(c.quantidade||0));
   });
   const pedidos=Object.values(grupos).sort((a,b)=>{
     const dc=(b.data||'').localeCompare(a.data||'');
@@ -1024,8 +1088,8 @@ function buildPedidosTable(pagPedidos,total,totalPags){
     <thead><tr>
       <th style="width:28px"></th>
       <th>Pedido</th><th>Data</th><th>Freteiro</th><th>Nota</th>
-      <th style="text-align:center">Lançado</th><th style="text-align:center">Pago</th>
-      <th>Itens</th><th>Custo Total</th><th>A pagar freteiro</th><th>Ações</th>
+      <th style="text-align:center">Lançado</th>
+      <th>Itens</th><th>Custo Total</th><th>Custo s/ Frete</th><th>A pagar freteiro</th><th>Ações</th>
     </tr></thead>
     <tbody>
     ${pagPedidos.map(g=>{
@@ -1038,9 +1102,9 @@ function buildPedidosTable(pagPedidos,total,totalPags){
         <td style="font-size:13px">${escHtml(g.freteiro)}</td>
         <td><span class="badge ${g.nota==='nota_paga'?'b-paga':'b-pagar'}">${g.nota==='nota_paga'?'Nota Paga':'A Pagar'}</span></td>
         <td style="text-align:center">${buildStatusCheck(g.itens,'lancado',g.pedido)}</td>
-        <td style="text-align:center">${buildStatusCheck(g.itens,'pago',g.pedido)}</td>
         <td style="font-size:13px;color:#6b7280">${g.itens.length}</td>
         <td style="font-weight:700;color:#1d4ed8">${fmt(g.tCusto)}</td>
+        <td style="font-weight:600;color:#7c3aed">${fmt(g.tSemFrete||0)}</td>
         <td style="font-weight:700;color:${g.nota==='nota_paga'?'#15803d':'#c2410c'}">${fmt(g.tFrete)}</td>
         <td style="white-space:nowrap">
           ${g.pedido==='(sem pedido)'?'<button class="btn btn-sm" style="margin-right:4px" onclick="atribuirPedido()">✏ Atribuir nº</button>':''}
@@ -1055,8 +1119,9 @@ function buildPedidosTable(pagPedidos,total,totalPags){
         <td style="font-size:12px">${escHtml(c.freteiro||'—')}</td>
         <td></td>
         <td style="text-align:center">${buildItemCheck(c,'lancado')}</td>
-        <td style="text-align:center">${buildItemCheck(c,'pago')}</td>
-        <td style="font-weight:600;font-size:13px">${escHtml(c.produto)}</td>
+        <td style="font-weight:600;font-size:13px">
+          <span class="sku-copy" onclick="copiarSKU(this,'${escHtml(c.produto)}')" title="Clique para copiar">${escHtml(c.produto)}</span>
+        </td>
         <td style="font-size:12px;color:#374151">
           Qtde: ${c.quantidade} · U$${fmtN(c.preco_usd,2)} · Cot:${fmtN(c.cotacao,2)} · <span style='color:${(c.comissao_pct||0)==0?"#dc2626":"#374151"}'>Com:${fmtN(c.comissao_pct,1)}%${(c.comissao_pct||0)==0?' ⚠':''}}</span>
         </td>
@@ -1123,9 +1188,9 @@ function renderPedidosTable(){
   const grupos={};
   lista.forEach(c=>{
     const key=c.pedido||'(sem pedido)';
-    if(!grupos[key]) grupos[key]={pedido:key,itens:[],tCusto:0,tFrete:0,data:c.data||'',freteiro:c.freteiro||'',nota:c.nota_status};
+    if(!grupos[key]) grupos[key]={pedido:key,itens:[],tCusto:0,tFrete:0,tSemFrete:0,data:c.data||'',freteiro:c.freteiro||'',nota:c.nota_status};
     else if((c.data||'')>(grupos[key].data||'')) grupos[key].data=c.data||'';
-    grupos[key].itens.push(c);grupos[key].tCusto+=c.custo_total||0;grupos[key].tFrete+=c.valor_pagar_freteiro||0;
+    grupos[key].itens.push(c);grupos[key].tCusto+=c.custo_total||0;grupos[key].tFrete+=c.valor_pagar_freteiro||0;grupos[key].tSemFrete+=((c.preco_usd||0)*(c.cotacao||0)*(c.quantidade||0));
   });
   const pedidos=Object.values(grupos).sort((a,b)=>{
     const dc=(b.data||'').localeCompare(a.data||'');
@@ -1561,7 +1626,11 @@ function printPedido(ped){
     .tot-box .val{font-size:15px;font-weight:700;margin-top:4px;color:#1d4ed8}
     .tot-box.orange .val{color:#c2410c}
     .tot-box.green .val{color:#15803d}
-    .footer{margin-top:24px;border-top:1px solid #e5e7eb;padding-top:10px;font-size:10px;color:#9ca3af;text-align:center}
+    .sku-copy{cursor:pointer;position:relative;border-radius:4px;padding:2px 6px;transition:background .15s}
+.sku-copy:hover{background:#dbeafe;color:#1d4ed8}
+.sku-copy:hover::after{content:'📋 copiar';position:absolute;top:-26px;left:50%;transform:translateX(-50%);background:#1e293b;color:#fff;font-size:11px;padding:3px 8px;border-radius:4px;white-space:nowrap;pointer-events:none;font-weight:400}
+.sku-copied::after{content:'✓ copiado!' !important;background:#16a34a !important}
+.footer{margin-top:24px;border-top:1px solid #e5e7eb;padding-top:10px;font-size:10px;color:#9ca3af;text-align:center}
     @media print{button{display:none}}
   </style>
 </head><body>
@@ -1597,6 +1666,21 @@ function printPedido(ped){
   const w=window.open('','_blank','width=900,height=700');
   w.document.write(html);
   w.document.close();
+}
+
+function copiarSKU(el,sku){
+  navigator.clipboard.writeText(sku).then(()=>{
+    el.classList.add('sku-copied');
+    setTimeout(()=>el.classList.remove('sku-copied'),1500);
+  }).catch(()=>{
+    // fallback for older browsers
+    const ta=document.createElement('textarea');
+    ta.value=sku;ta.style.position='fixed';ta.style.opacity='0';
+    document.body.appendChild(ta);ta.select();
+    document.execCommand('copy');document.body.removeChild(ta);
+    el.classList.add('sku-copied');
+    setTimeout(()=>el.classList.remove('sku-copied'),1500);
+  });
 }
 
 // ─── INIT — load from Firestore, fallback to localStorage, then defaults ─────
