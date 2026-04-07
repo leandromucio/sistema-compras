@@ -45,10 +45,15 @@ A pagar freteiro:
 
 ### Firebase — cuidados críticos
 - `save(key, val)` atualiza STATE + localStorage + Firestore
-- Após salvar, ignora snapshots por 3 segundos (evita eco)
-- No INIT: se localStorage tem mais registros que Firestore, usa local e sincroniza
+- Após salvar, ignora snapshots por 5 segundos (evita eco)
+- No INIT: Firestore é autoritativo; localStorage é merged apenas para recuperar registros não sincronizados (por ID)
 - Escrita com retry (3 tentativas com delay crescente)
+- Dados são sanitizados antes de enviar ao Firestore (undefined → null)
 - Coleção Firestore: `sistema`, docs: `compras`, `comissoes`, `freteiros`, `users`
+
+### calcItem — cuidado crítico
+- A função `calcItem()` deve sempre retornar `com` no objeto de retorno
+- `comissao_pct` no registro salvo vem de `c.com` — se `com` não for retornado, salva como 0%
 
 ### Estrutura de um registro de compra
 ```js
@@ -83,7 +88,7 @@ A pagar freteiro:
 - usuario / 123456 (role: user — vê só próprias compras)
 
 ## Versão atual
-v2025.03.30-r18 — exibida na tela de login
+v2025.03.30-r28 — exibida na tela de login
 
 ## Ao fazer alterações
 1. Sempre editar o arquivo `index.html` na pasta
