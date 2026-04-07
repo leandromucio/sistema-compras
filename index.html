@@ -142,19 +142,24 @@ function _showSaveError(msg){
 
 // Write array to Firestore doc with retry
 async function ss(key,val){
+  _pendingSaves++;
+  _setSavingIndicator(true);
   for(let attempt=0;attempt<3;attempt++){
     try{
       await db.collection(COL).doc(key).set({data:val,ts:Date.now()});
-      // Clear error banner on success
       const b=document.getElementById('_fb-err-banner');
       if(b) b.remove();
-      return; // success
+      _pendingSaves=Math.max(0,_pendingSaves-1);
+      if(_pendingSaves===0) _setSavingIndicator(false);
+      return;
     }catch(e){
       console.warn(`Firestore write attempt ${attempt+1} failed:`,e.message);
       if(attempt<2) await new Promise(r=>setTimeout(r,500*(attempt+1)));
       else _showSaveError(e.message);
     }
   }
+  _pendingSaves=Math.max(0,_pendingSaves-1);
+  if(_pendingSaves===0) _setSavingIndicator(false);
   console.warn('Firestore write failed after 3 attempts, data in localStorage');
 }
 
@@ -213,14 +218,38 @@ let STATE={
 
 // Track keys we just saved locally — ignore the echo from Firestore
 const _localSaveTs={};
+let _pendingSaves=0;
+
+function _setSavingIndicator(saving){
+  let el=document.getElementById('_saving-ind');
+  if(saving){
+    if(!el){
+      el=document.createElement('div');
+      el.id='_saving-ind';
+      el.style.cssText='position:fixed;bottom:8px;right:12px;background:#1e293b;color:#fff;font-size:12px;padding:5px 12px;border-radius:20px;z-index:9999;opacity:.9';
+      document.body.appendChild(el);
+    }
+    el.textContent='Salvando...';
+  } else if(el){
+    el.textContent='Salvo';
+    setTimeout(()=>{if(el)el.remove();},1500);
+  }
+}
+
+window.addEventListener('beforeunload',e=>{
+  if(_pendingSaves>0){
+    e.preventDefault();
+    e.returnValue='Ainda salvando dados. Aguarde um momento antes de fechar.';
+  }
+});
 
 // Save to Firestore + local cache, update STATE immediately
 function save(key,val){
   STATE[key]=val;
   saveLocal(key,val);
   const now=Date.now();
-  _localSaveTs[key]=now; // mark as locally saved (in-memory, for echo prevention)
-  try{localStorage.setItem('sc2_ts_'+key,String(now));}catch{} // persist ts for INIT comparison
+  _localSaveTs[key]=now;
+  try{localStorage.setItem('sc2_ts_'+key,String(now));}catch{}
   ss(key,val);
 }
 
@@ -324,7 +353,7 @@ function buildLogin(){
     <div id="li-err" style="color:#dc2626;font-size:13px;margin-top:8px;display:none"></div>
     <button class="btn btn-blue" style="width:100%;margin-top:20px;padding:10px" onclick="doLogin()">Entrar</button>
     <div style="text-align:center;font-size:12px;color:#9ca3af;margin-top:12px">admin / admin123 &nbsp;·&nbsp; usuario / 123456</div>
-      <div style="text-align:center;font-size:11px;color:#d1d5db;margin-top:8px;letter-spacing:.5px">v2025.03.30-r21</div>
+      <div style="text-align:center;font-size:11px;color:#d1d5db;margin-top:8px;letter-spacing:.5px">v2025.03.30-r22</div>
   </div></div>`;
 }
 
@@ -1747,10 +1776,26 @@ function copiarSKU(el,sku){
       const k=keys[i];
       const local=getLocal(k);
       if(snap.exists){
-        // Firestore is authoritative — always use it on load
         const fbData=snap.data().data;
-        STATE[k]=fbData;
-        saveLocal(k,fbData);
+        // For compras: merge — recover any local records not yet synced to Firestore
+        if(k==='compras'&&local&&Array.isArray(local)&&Array.isArray(fbData)){
+          const fbIds=new Set(fbData.map(c=>c.id));
+          const onlyLocal=local.filter(c=>!fbIds.has(c.id));
+          if(onlyLocal.length>0){
+            console.log(`Merging ${onlyLocal.length} local-only compras into Firestore`);
+            const merged=[...fbData,...onlyLocal];
+            STATE[k]=merged;
+            saveLocal(k,merged);
+            ss(k,merged); // push merged data back to Firestore
+          } else {
+            STATE[k]=fbData;
+            saveLocal(k,fbData);
+          }
+        } else {
+          // Config data (users, freteiros, comissoes): Firestore wins
+          STATE[k]=fbData;
+          saveLocal(k,fbData);
+        }
       } else if(local){
         // Doc doesn't exist in Firestore yet — push local data up
         STATE[k]=local;
