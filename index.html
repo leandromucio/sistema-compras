@@ -128,18 +128,33 @@ firebase.initializeApp(firebaseConfig);
 const db=firebase.firestore();
 const COL='sistema'; // collection name
 
+// Show persistent error banner when Firebase write fails
+function _showSaveError(msg){
+  let b=document.getElementById('_fb-err-banner');
+  if(!b){
+    b=document.createElement('div');
+    b.id='_fb-err-banner';
+    b.style.cssText='position:fixed;top:0;left:0;right:0;background:#dc2626;color:#fff;text-align:center;padding:10px 16px;font-size:13px;z-index:99999;display:flex;align-items:center;justify-content:center;gap:12px';
+    document.body.appendChild(b);
+  }
+  b.innerHTML=`⚠ Erro ao salvar no banco de dados: ${msg} — <strong>Os dados estão salvos localmente.</strong> <button onclick="location.reload()" style="background:#fff;color:#dc2626;border:none;border-radius:4px;padding:3px 10px;cursor:pointer;font-weight:600">Recarregar</button>`;
+}
+
 // Write array to Firestore doc with retry
 async function ss(key,val){
   for(let attempt=0;attempt<3;attempt++){
     try{
       await db.collection(COL).doc(key).set({data:val,ts:Date.now()});
+      // Clear error banner on success
+      const b=document.getElementById('_fb-err-banner');
+      if(b) b.remove();
       return; // success
     }catch(e){
       console.warn(`Firestore write attempt ${attempt+1} failed:`,e.message);
       if(attempt<2) await new Promise(r=>setTimeout(r,500*(attempt+1)));
+      else _showSaveError(e.message);
     }
   }
-  // All attempts failed — data is safe in localStorage
   console.warn('Firestore write failed after 3 attempts, data in localStorage');
 }
 
@@ -203,7 +218,9 @@ const _localSaveTs={};
 function save(key,val){
   STATE[key]=val;
   saveLocal(key,val);
-  _localSaveTs[key]=Date.now(); // mark as locally saved
+  const now=Date.now();
+  _localSaveTs[key]=now; // mark as locally saved (in-memory, for echo prevention)
+  try{localStorage.setItem('sc2_ts_'+key,String(now));}catch{} // persist ts for INIT comparison
   ss(key,val);
 }
 
@@ -214,9 +231,9 @@ function startListeners(){
   keys.forEach(key=>{
     const unsub=db.collection(COL).doc(key).onSnapshot(snap=>{
       if(!snap.exists) return;
-      // Ignore snapshot if we saved this key less than 3 seconds ago (echo)
+      // Ignore echo: if THIS computer saved this key in the last 5 seconds, skip
       const ts=_localSaveTs[key]||0;
-      if(Date.now()-ts<3000) return;
+      if(Date.now()-ts<5000) return;
       const val=snap.data().data;
       STATE[key]=val;
       saveLocal(key,val);
@@ -307,7 +324,7 @@ function buildLogin(){
     <div id="li-err" style="color:#dc2626;font-size:13px;margin-top:8px;display:none"></div>
     <button class="btn btn-blue" style="width:100%;margin-top:20px;padding:10px" onclick="doLogin()">Entrar</button>
     <div style="text-align:center;font-size:12px;color:#9ca3af;margin-top:12px">admin / admin123 &nbsp;·&nbsp; usuario / 123456</div>
-      <div style="text-align:center;font-size:11px;color:#d1d5db;margin-top:8px;letter-spacing:.5px">v2025.03.30-r18</div>
+      <div style="text-align:center;font-size:11px;color:#d1d5db;margin-top:8px;letter-spacing:.5px">v2025.03.30-r21</div>
   </div></div>`;
 }
 
@@ -1730,22 +1747,17 @@ function copiarSKU(el,sku){
       const k=keys[i];
       const local=getLocal(k);
       if(snap.exists){
+        // Firestore is authoritative — always use it on load
         const fbData=snap.data().data;
-        const fbTs=snap.data().ts||0;
-        // Use localStorage if it has MORE records (means Firestore hasn't synced yet)
-        // or if local is newer than Firestore timestamp
-        if(local&&Array.isArray(local)&&Array.isArray(fbData)&&local.length>fbData.length){
-          console.log(`Using local cache for ${k}: local=${local.length} fb=${fbData.length}`);
-          STATE[k]=local;
-          // Push local data to Firestore to sync
-          ss(k,local);
-        } else {
-          STATE[k]=fbData;
-          saveLocal(k,fbData);
-        }
+        STATE[k]=fbData;
+        saveLocal(k,fbData);
+      } else if(local){
+        // Doc doesn't exist in Firestore yet — push local data up
+        STATE[k]=local;
+        ss(k,local);
       } else {
-        STATE[k]=local||defaults[k];
-        if(k!=='compras') ss(k,STATE[k]);
+        STATE[k]=defaults[k];
+        if(k!=='compras') ss(k,defaults[k]);
       }
     });
     STATE._ready=true;
