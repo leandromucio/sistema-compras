@@ -153,9 +153,11 @@ function _showSaveError(msg){
 async function ss(key,val){
   _pendingSaves++;
   _setSavingIndicator(true);
+  // Firestore rejects undefined values — sanitize by stripping them
+  const clean=JSON.parse(JSON.stringify(val,(_k,v)=>v===undefined?null:v));
   for(let attempt=0;attempt<3;attempt++){
     try{
-      await db.collection(COL).doc(key).set({data:val,ts:Date.now()});
+      await db.collection(COL).doc(key).set({data:clean,ts:Date.now()});
       const b=document.getElementById('_fb-err-banner');
       if(b) b.remove();
       _pendingSaves=Math.max(0,_pendingSaves-1);
@@ -363,7 +365,7 @@ function buildLogin(){
     <div id="li-err" style="color:#dc2626;font-size:13px;margin-top:8px;display:none"></div>
     <button class="btn btn-blue" style="width:100%;margin-top:20px;padding:10px" onclick="doLogin()">Entrar</button>
     <div style="text-align:center;font-size:12px;color:#9ca3af;margin-top:12px">admin / admin123 &nbsp;·&nbsp; usuario / 123456</div>
-      <div style="text-align:center;font-size:11px;color:#d1d5db;margin-top:8px;letter-spacing:.5px">v2025.03.30-r24</div>
+      <div style="text-align:center;font-size:11px;color:#d1d5db;margin-top:8px;letter-spacing:.5px">v2025.03.30-r25</div>
   </div></div>`;
 }
 
