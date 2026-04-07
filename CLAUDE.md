@@ -4,7 +4,7 @@
 Sistema web de gestão de compras de panelas importadas via freteiros.
 Arquivo único: `index.html` — HTML + CSS + JavaScript puro, sem frameworks.
 Banco de dados: Firebase Firestore (tempo real, multi-usuário).
-Hospedagem: Netlify em https://genuine-lolly-5286ff.netlify.app
+Hospedagem: GitHub Pages em https://leandromucio.github.io/sistema-compras
 
 ## Estrutura do arquivo index.html
 - **Linhas 1-115**: HTML head, CSS completo, scripts Firebase
