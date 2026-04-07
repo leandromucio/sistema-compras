@@ -128,6 +128,15 @@ firebase.initializeApp(firebaseConfig);
 const db=firebase.firestore();
 const COL='sistema'; // collection name
 
+// Show init status briefly (green = ok, yellow = offline)
+function _showInitStatus(msg,color){
+  const b=document.createElement('div');
+  b.style.cssText=`position:fixed;bottom:8px;left:12px;background:${color};color:#fff;font-size:11px;padding:4px 10px;border-radius:12px;z-index:9999;opacity:.95`;
+  b.textContent=msg;
+  document.body.appendChild(b);
+  setTimeout(()=>b.remove(),5000);
+}
+
 // Show persistent error banner when Firebase write fails
 function _showSaveError(msg){
   let b=document.getElementById('_fb-err-banner');
@@ -353,7 +362,7 @@ function buildLogin(){
     <div id="li-err" style="color:#dc2626;font-size:13px;margin-top:8px;display:none"></div>
     <button class="btn btn-blue" style="width:100%;margin-top:20px;padding:10px" onclick="doLogin()">Entrar</button>
     <div style="text-align:center;font-size:12px;color:#9ca3af;margin-top:12px">admin / admin123 &nbsp;·&nbsp; usuario / 123456</div>
-      <div style="text-align:center;font-size:11px;color:#d1d5db;margin-top:8px;letter-spacing:.5px">v2025.03.30-r22</div>
+      <div style="text-align:center;font-size:11px;color:#d1d5db;margin-top:8px;letter-spacing:.5px">v2025.03.30-r23</div>
   </div></div>`;
 }
 
@@ -1806,6 +1815,7 @@ function copiarSKU(el,sku){
       }
     });
     STATE._ready=true;
+    _showInitStatus(`Firestore OK — ${STATE.compras.length} pedidos carregados`,'#16a34a');
     startListeners();
     render();
   }catch(e){
@@ -1816,15 +1826,9 @@ function copiarSKU(el,sku){
       if(local) STATE[k]=local;
     });
     STATE._ready=true;
-    document.getElementById('root').innerHTML+='';
+    startListeners(); // still listen for when connection recovers
     render();
-    // Show offline banner
-    setTimeout(()=>{
-      const b=document.createElement('div');
-      b.style.cssText='position:fixed;bottom:0;left:0;right:0;background:#f59e0b;color:#fff;text-align:center;padding:8px;font-size:13px;z-index:9999';
-      b.innerHTML='⚠ Modo offline — alterações salvas localmente e sincronizadas quando reconectar';
-      document.body.appendChild(b);
-    },100);
+    _showInitStatus(`⚠ Offline: ${e.message} — dados locais carregados`,'#f59e0b');
   }
 })();
 </script>
